@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0">
+<title>MedSim — Learner Controller</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+:root{--bg:#0a0a10;--sf:#14141e;--sf2:#1c1c28;--bd:#28283a;--tx:#e0e0f0;--sub:#777;
+  --gr:#00e676;--rd:#ff4444;--bl:#40c8ff;--yl:#ffd740;--or:#ff9100;--pu:#c940ff}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--tx);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding-bottom:80px}
+
+/* ── Setup screen ── */
+#setup{position:fixed;inset:0;background:#08080e;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:32px}
+#setup h1{font-size:18px;font-weight:800;color:#fff;letter-spacing:2px;text-align:center}
+#setup p{font-size:13px;color:#555;text-align:center;max-width:300px;line-height:1.8}
+#setup-input{background:#111;border:2px solid var(--bl);border-radius:10px;color:#40c8ff;font-size:26px;font-weight:800;letter-spacing:5px;text-align:center;padding:12px 20px;width:100%;max-width:320px;outline:none;text-transform:uppercase;font-family:'Courier New',monospace}
+#setup-btn{background:var(--bl);color:#000;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:800;cursor:pointer;width:100%;max-width:320px;letter-spacing:1px}
+#setup-msg{font-size:12px;color:#555;min-height:18px;text-align:center}
+
+/* ── Header ── */
+header{background:var(--sf);padding:10px 16px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:100}
+header h1{font-size:14px;font-weight:700;color:#aaa;letter-spacing:1px}
+#status{font-size:11px;padding:3px 10px;border-radius:99px;font-weight:700}
+#status.live{background:#003a00;color:var(--gr)}#status.off{background:#3a0000;color:var(--rd)}#status.try{background:#2a2000;color:var(--yl)}
+
+/* ── Instructor override banner ── */
+#inst-banner{background:#1a0e00;border-bottom:2px solid var(--or);padding:7px 16px;font-size:11px;font-weight:700;color:var(--or);letter-spacing:1px;text-align:center;display:none}
+#inst-banner.show{display:block}
+
+/* ── Locked banner ── */
+#lock-banner{background:#2a0000;border-bottom:2px solid var(--rd);padding:9px 16px;font-size:12px;font-weight:800;color:var(--rd);letter-spacing:1px;text-align:center;display:none}
+#lock-banner.show{display:block}
+
+/* ── Vitals strip ── */
+#vs{display:flex;flex-wrap:wrap;gap:1px;background:var(--bd);border-bottom:1px solid var(--bd)}
+.vsi{flex:1 1 30%;background:var(--sf);padding:8px;text-align:center}
+.vsl{font-size:9px;letter-spacing:1px;color:var(--sub)}.vsv{font-size:20px;font-weight:700}
+
+/* ── Section titles ── */
+.stitle{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--sub);padding:14px 16px 6px;text-transform:uppercase}
+
+/* ── Drug grid ── */
+.dgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;padding:0 16px}
+.dbtn{border:none;border-radius:10px;padding:13px 10px;font-size:12px;font-weight:700;cursor:pointer;text-align:center;line-height:1.4;display:flex;flex-direction:column;align-items:center;gap:3px;transition:filter .15s}
+.dbtn:active{filter:brightness(.7)}.dbtn .sub{font-size:10px;font-weight:400;opacity:.65}
+.locked .dbtn{opacity:.35;pointer-events:none}
+
+/* Drug color themes */
+.de{background:#2a0505;color:#ff7070;border:1px solid #550a0a}   /* epi */
+.da{background:#0a1a2a;color:#60b0ff;border:1px solid #0a3055}   /* atropine / vasopressors */
+.df{background:#001a10;color:#40ffaa;border:1px solid #004422}   /* fluids */
+.ds{background:#1a1000;color:#ffc060;border:1px solid #3a2200}   /* sedation/induction */
+.dm{background:#1a001a;color:#cc80ff;border:1px solid #330033}   /* NMB */
+.dr{background:#001a1a;color:#40e0ff;border:1px solid #004444}   /* reversal */
+
+/* ── Vent adjustments ── */
+.vgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;padding:0 16px}
+.vrow{background:var(--sf);border-radius:10px;border:1px solid var(--bd);padding:10px 12px;display:flex;align-items:center;gap:8px}
+.vlbl{flex:1;font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--sub)}
+.vval{font-size:18px;font-weight:800;min-width:60px;text-align:center;font-variant-numeric:tabular-nums}
+.vadj{display:flex;flex-direction:column;gap:4px}
+.vb{background:var(--sf2);border:1px solid var(--bd);color:var(--tx);border-radius:6px;width:30px;height:30px;font-size:18px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1}
+.vb:active{filter:brightness(.7)}
+.locked .vrow{opacity:.35;pointer-events:none}
+
+/* ── Emergency buttons ── */
+.egrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:0 16px}
+.ebtn{border:none;border-radius:10px;padding:14px 6px;font-size:12px;font-weight:800;cursor:pointer;text-align:center;letter-spacing:.5px;line-height:1.3}
+.ebtn:active{filter:brightness(.7)}
+.ecpr{background:#3a0000;color:#ff5555;border:2px solid #880000;font-size:13px}
+.ecpr.active{background:#880000;border-color:#ff3333;color:#fff}
+.edf{background:#2a1800;color:#ff9900;border:2px solid #553300}
+.ecv{background:#001830;color:#40aaff;border:2px solid #003366}
+.locked .egrid{opacity:.35;pointer-events:none}
+
+/* ── Action log ── */
+#log{margin:0 16px;background:var(--sf);border-radius:10px;border:1px solid var(--bd);max-height:140px;overflow-y:auto;padding:8px 10px}
+#log-inner{font-size:10px;color:#555;line-height:1.9;font-family:'Courier New',monospace}
+.log-entry{color:#aaa;border-bottom:1px solid #1a1a2a;padding:1px 0}
+.log-entry.ok{color:#00cc66}.log-entry.inst{color:var(--or)}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:9px 18px;border-radius:99px;font-size:13px;font-weight:600;opacity:0;transition:opacity .3s;pointer-events:none;border:1px solid #444;z-index:999;white-space:nowrap}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="setup">
+  <div style="font-size:42px">🩺</div>
+  <h1>MedSim<br>Learner Controller</h1>
+  <p>Enter the <strong style="color:#fff">Room Code</strong> shown on the monitor screen.</p>
+  <input id="setup-input" type="text" value="ROOM1" maxlength="12" autocomplete="off" autocorrect="off" spellcheck="false">
+  <button id="setup-btn" onclick="doConnect()">JOIN SIMULATION</button>
+  <div id="setup-msg">The instructor must start the monitor first.</div>
+</div>
+
+<header>
+  <h1>🩺 LEARNER CONTROLLER</h1>
+  <div id="status" class="off">● OFFLINE</div>
+</header>
+
+<div id="inst-banner">⚡ INSTRUCTOR OVERRIDE ACTIVE</div>
+<div id="lock-banner">🔒 CONTROLS LOCKED BY INSTRUCTOR</div>
+
+<!-- Live vitals strip -->
+<div id="vs">
+  <div class="vsi"><div class="vsl">HR</div><div class="vsv" style="color:var(--gr)" id="s-hr">--</div></div>
+  <div class="vsi"><div class="vsl">BP</div><div class="vsv" style="color:var(--rd)" id="s-bp">--/--</div></div>
+  <div class="vsi"><div class="vsl">SpO2</div><div class="vsv" style="color:var(--bl)" id="s-spo2">--%</div></div>
+  <div class="vsi"><div class="vsl">EtCO2</div><div class="vsv" style="color:var(--yl)" id="s-co2">--</div></div>
+  <div class="vsi"><div class="vsl">RR</div><div class="vsv" style="color:#aaa" id="s-rr">--</div></div>
+  <div class="vsi"><div class="vsl">RHYTHM</div><div class="vsv" style="color:var(--gr);font-size:13px" id="s-rhy">--</div></div>
+</div>
+
+<!-- ═══ VASOPRESSORS / RESUSCITATION ═══ -->
+<div class="stitle">💉 Resuscitation Drugs</div>
+<div class="dgrid" id="drug-section">
+  <button class="dbtn de" onclick="giveDrug('epinephrine_code','1mg IV push')">
+    Epinephrine<span class="sub">1 mg IV — CODE DOSE</span>
+  </button>
+  <button class="dbtn de" onclick="giveDrug('epinephrine_push','10mcg IV push')">
+    Epinephrine<span class="sub">10 mcg — push-dose pressor</span>
+  </button>
+  <button class="dbtn da" onclick="giveDrug('atropine','0.5mg IV')">
+    Atropine<span class="sub">0.5 mg IV</span>
+  </button>
+  <button class="dbtn da" onclick="giveDrug('vasopressin','40 units IV')">
+    Vasopressin<span class="sub">40 units IV</span>
+  </button>
+  <button class="dbtn da" onclick="giveDrug('phenylephrine','100mcg IV')">
+    Phenylephrine<span class="sub">100 mcg IV</span>
+  </button>
+  <button class="dbtn da" onclick="giveDrug('norepinephrine','start 0.1 mcg/kg/min')">
+    Norepinephrine<span class="sub">start infusion</span>
+  </button>
+</div>
+
+<!-- ═══ INDUCTION / SEDATION ═══ -->
+<div class="stitle" style="margin-top:4px">💊 Induction / Sedation</div>
+<div class="dgrid">
+  <button class="dbtn ds" onclick="giveDrug('propofol','2mg/kg IV')">
+    Propofol<span class="sub">2 mg/kg IV</span>
+  </button>
+  <button class="dbtn ds" onclick="giveDrug('ketamine','1-2mg/kg IV')">
+    Ketamine<span class="sub">1–2 mg/kg IV</span>
+  </button>
+  <button class="dbtn ds" onclick="giveDrug('etomidate','0.3mg/kg IV')">
+    Etomidate<span class="sub">0.3 mg/kg IV</span>
+  </button>
+  <button class="dbtn df" onclick="giveDrug('fluid_bolus','500mL NS IV')">
+    Fluid Bolus<span class="sub">500 mL NS IV</span>
+  </button>
+</div>
+
+<!-- ═══ ANALGESICS ═══ -->
+<div class="stitle" style="margin-top:4px">💉 Analgesics / Opioids</div>
+<div class="dgrid">
+  <button class="dbtn ds" onclick="giveDrug('fentanyl','1-2mcg/kg IV')">
+    Fentanyl<span class="sub">1–2 mcg/kg IV</span>
+  </button>
+  <button class="dbtn ds" onclick="giveDrug('morphine','0.1mg/kg IV')">
+    Morphine<span class="sub">0.1 mg/kg IV</span>
+  </button>
+  <button class="dbtn dr" onclick="giveDrug('narcan','0.4mg IV')">
+    Naloxone<span class="sub">0.4 mg IV — reversal</span>
+  </button>
+  <button class="dbtn df" onclick="giveDrug('ephedrine','10mg IV')">
+    Ephedrine<span class="sub">10 mg IV — BP support</span>
+  </button>
+</div>
+
+<!-- ═══ NEUROMUSCULAR BLOCKADE ═══ -->
+<div class="stitle" style="margin-top:4px">💪 Neuromuscular Blockade</div>
+<div class="dgrid">
+  <button class="dbtn dm" onclick="giveDrug('succinylcholine','1.5-4mg/kg IV/IM')">
+    Succinylcholine<span class="sub">1.5 mg/kg IV · 4 mg/kg IM</span>
+  </button>
+  <button class="dbtn dm" onclick="giveDrug('rocuronium','1.2mg/kg IV')">
+    Rocuronium<span class="sub">1.2 mg/kg IV — RSI</span>
+  </button>
+  <button class="dbtn dr" onclick="giveDrug('sugammadex','200mg IV')">
+    Sugammadex<span class="sub">200 mg — reversal</span>
+  </button>
+  <button class="dbtn dr" onclick="giveDrug('neostigmine','0.07mg/kg IV')">
+    Neostigmine<span class="sub">0.07 mg/kg — reversal</span>
+  </button>
+</div>
+
+<!-- ═══ VENT ADJUSTMENTS ═══ -->
+<div class="stitle" style="margin-top:4px">🌬️ Ventilator</div>
+<div id="vent-section" style="padding:0 16px;display:flex;flex-direction:column;gap:8px">
+  <div class="vrow">
+    <div class="vlbl" style="color:var(--bl)">TIDAL VOL</div>
+    <div class="vval" style="color:var(--bl)" id="v-tv">400 mL</div>
+    <div class="vadj">
+      <button class="vb" onclick="adjVent('tv',50)">+</button>
+      <button class="vb" onclick="adjVent('tv',-50)">−</button>
+    </div>
+  </div>
+  <div class="vrow">
+    <div class="vlbl" style="color:var(--yl)">RATE (RR)</div>
+    <div class="vval" style="color:var(--yl)" id="v-rr">12 /min</div>
+    <div class="vadj">
+      <button class="vb" onclick="adjVent('rr',2)">+</button>
+      <button class="vb" onclick="adjVent('rr',-2)">−</button>
+    </div>
+  </div>
+  <div class="vrow">
+    <div class="vlbl" style="color:var(--gr)">FiO₂</div>
+    <div class="vval" style="color:var(--gr)" id="v-fio2">50%</div>
+    <div class="vadj">
+      <button class="vb" onclick="adjVent('fio2',10)">+</button>
+      <button class="vb" onclick="adjVent('fio2',-10)">−</button>
+    </div>
+  </div>
+  <div class="vrow">
+    <div class="vlbl" style="color:#44ffcc">PEEP</div>
+    <div class="vval" style="color:#44ffcc" id="v-peep">5 cmH₂O</div>
+    <div class="vadj">
+      <button class="vb" onclick="adjVent('peep',2)">+</button>
+      <button class="vb" onclick="adjVent('peep',-2)">−</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ EMERGENCY PROCEDURES ═══ -->
+<div class="stitle" style="margin-top:4px">⚡ Procedures</div>
+<div class="egrid" id="proc-section">
+  <button class="ebtn ecpr" id="cpr-btn" onclick="toggleCPR()">
+    CPR<br><span style="font-size:10px;font-weight:400">tap to start/stop</span>
+  </button>
+  <button class="ebtn edf" onclick="doDefib()">
+    DEFIB<br><span style="font-size:10px;font-weight:400">200 J</span>
+  </button>
+  <button class="ebtn ecv" onclick="doCardioversion()">
+    CARDIO-<br>VERSION
+  </button>
+</div>
+
+<!-- ═══ ACTION LOG ═══ -->
+<div class="stitle" style="margin-top:4px">📋 My Actions</div>
+<div id="log"><div id="log-inner"><span style="color:#333">— waiting for actions —</span></div></div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+var peer=null, conn=null, ROOM='';
+var locked=false, cprActive=false;
+var ventState={tv:400,rr:12,fio2:50,peep:5};
+var logEntries=[];
+
+// ── DOM ───────────────────────────────────────────────────────────────────
+var setupDiv=document.getElementById('setup');
+var statusEl=document.getElementById('status');
+var instBanner=document.getElementById('inst-banner');
+var lockBanner=document.getElementById('lock-banner');
+var instTimer=null;
+
+// ── Connect ───────────────────────────────────────────────────────────────
+function doConnect(){
+  ROOM=(document.getElementById('setup-input').value||'').trim().toUpperCase();
+  if(!ROOM){setMsg('Enter a room code.');return;}
+  setMsg('Connecting…');
+  document.getElementById('setup-btn').disabled=true;
+  statusEl.textContent='● CONNECTING';statusEl.className='try';
+  // Participant gets a unique peer ID so monitor can distinguish it
+  var myId='medsim-par-'+ROOM+'-'+Math.random().toString(36).slice(2,6);
+  peer=new Peer(myId,{debug:0});
+  peer.on('open',function(){
+    conn=peer.connect('medsim-mon-'+ROOM,{reliable:true,metadata:{role:'participant'}});
+    conn.on('open',function(){
+      setupDiv.style.display='none';
+      statusEl.textContent='● CONNECTED';statusEl.className='live';
+      logAction('Connected to monitor ('+ROOM+')','ok');
+    });
+    conn.on('data',function(msg){handleIncoming(msg);});
+    conn.on('close',function(){
+      statusEl.textContent='● DISCONNECTED';statusEl.className='off';
+      logAction('Disconnected from monitor','');
+    });
+    conn.on('error',function(e){
+      statusEl.textContent='● ERROR';statusEl.className='off';
+      setMsg('Connection error: '+e.type);
+      document.getElementById('setup-btn').disabled=false;
+    });
+  });
+  peer.on('error',function(e){
+    setMsg('PeerJS error: '+e.type+'. Is the monitor running?');
+    document.getElementById('setup-btn').disabled=false;
+    statusEl.textContent='● ERROR';statusEl.className='off';
+  });
+}
+
+// ── Handle incoming state from monitor ───────────────────────────────────
+function handleIncoming(msg){
+  if(!msg||!msg.type)return;
+  if(msg.type==='state'){
+    var d=msg.data;
+    document.getElementById('s-hr').textContent=d.hr||'--';
+    document.getElementById('s-bp').textContent=(d.sbp||'--')+'/'+(d.dbp||'--');
+    document.getElementById('s-spo2').textContent=(d.spo2||'--')+'%';
+    document.getElementById('s-co2').textContent=d.etco2||'--';
+    document.getElementById('s-rr').textContent=d.rr||'--';
+    document.getElementById('s-rhy').textContent=d.rhythm||'--';
+    // Sync vent display if monitor sends vent settings
+    if(d.tv){ventState.tv=d.tv;updateVentDisplay();}
+    if(d.rr_set){ventState.rr=d.rr_set;updateVentDisplay();}
+    if(d.fio2!=null){ventState.fio2=d.fio2;updateVentDisplay();}
+    if(d.peep!=null){ventState.peep=d.peep;updateVentDisplay();}
+  }
+  if(msg.type==='participantLock'){
+    locked=msg.locked;
+    lockBanner.classList.toggle('show',locked);
+    setLocked(locked);
+  }
+  // Instructor action — show banner briefly
+  if(msg.type==='instructorAction'){
+    instBanner.classList.add('show');
+    logAction('Instructor: '+msg.desc,'inst');
+    clearTimeout(instTimer);
+    instTimer=setTimeout(function(){instBanner.classList.remove('show');},4000);
+  }
+}
+
+function setLocked(l){
+  ['drug-section','vent-section','proc-section'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.classList.toggle('locked',l);
+  });
+}
+
+// ── Send to monitor ───────────────────────────────────────────────────────
+function send(obj){
+  if(!conn||!conn.open){toast('Not connected');return false;}
+  if(locked){toast('Controls locked by instructor');return false;}
+  obj.role='participant';
+  try{conn.send(obj);}catch(e){toast('Send error');return false;}
+  return true;
+}
+
+// ── Drugs ─────────────────────────────────────────────────────────────────
+// Map participant drug names → monitor intervention names
+var DRUG_MAP={
+  'epinephrine_code':{drug:'epinephrine',dose:1,label:'Epi 1mg IV (code)'},
+  'epinephrine_push':{drug:'epinephrine_push',dose:0.01,label:'Epi 10mcg push-dose'},
+  'atropine':{drug:'atropine',dose:0.5,label:'Atropine 0.5mg'},
+  'vasopressin':{drug:'vasopressin',dose:40,label:'Vasopressin 40u'},
+  'phenylephrine':{drug:'phenylephrine',dose:100,label:'Phenylephrine 100mcg'},
+  'norepinephrine':{drug:'norepinephrine',dose:0.1,label:'Norepi infusion'},
+  'propofol':{drug:'propofol',dose:200,label:'Propofol 2mg/kg'},
+  'ketamine':{drug:'ketamine',dose:100,label:'Ketamine 1-2mg/kg'},
+  'etomidate':{drug:'etomidate',dose:20,label:'Etomidate 0.3mg/kg'},
+  'fentanyl':{drug:'fentanyl',dose:100,label:'Fentanyl 1-2mcg/kg'},
+  'morphine':{drug:'morphine',dose:4,label:'Morphine 0.1mg/kg'},
+  'narcan':{drug:'narcan',dose:0.4,label:'Naloxone 0.4mg'},
+  'ephedrine':{drug:'ephedrine',dose:10,label:'Ephedrine 10mg'},
+  'succinylcholine':{drug:'succinylcholine',dose:100,label:'Succinylcholine 1.5mg/kg IV'},
+  'rocuronium':{drug:'rocuronium',dose:80,label:'Rocuronium 1.2mg/kg'},
+  'sugammadex':{drug:'sugammadex',dose:200,label:'Sugammadex 200mg'},
+  'neostigmine':{drug:'neostigmine',dose:3,label:'Neostigmine 0.07mg/kg'},
+  'fluid_bolus':{drug:'fluid_bolus',dose:500,label:'Fluid bolus 500mL'}
+};
+
+function giveDrug(key,labelHint){
+  var m=DRUG_MAP[key];if(!m)return;
+  if(!send({type:'intervention',drug:m.drug,dose:m.dose,actionLabel:m.label}))return;
+  logAction('Gave: '+m.label,'ok');
+  toast(m.label+' given');
+}
+
+// ── Vent ──────────────────────────────────────────────────────────────────
+function adjVent(param,delta){
+  var limits={tv:[100,900,50],rr:[2,40,2],fio2:[21,100,10],peep:[0,20,2]};
+  var L=limits[param];if(!L)return;
+  ventState[param]=Math.max(L[0],Math.min(L[1],ventState[param]+delta));
+  updateVentDisplay();
+  var data={};
+  if(param==='tv')data.tv=ventState.tv;
+  if(param==='rr')data.rr_set=ventState.rr;
+  if(param==='fio2')data.fio2=ventState.fio2;
+  if(param==='peep')data.peep=ventState.peep;
+  if(!send({type:'update',data:data}))return;
+  var labels={tv:'TV',rr:'RR',fio2:'FiO2',peep:'PEEP'};
+  logAction('Vent '+labels[param]+' → '+ventState[param],'ok');
+}
+
+function updateVentDisplay(){
+  document.getElementById('v-tv').textContent=ventState.tv+' mL';
+  document.getElementById('v-rr').textContent=ventState.rr+' /min';
+  document.getElementById('v-fio2').textContent=ventState.fio2+'%';
+  document.getElementById('v-peep').textContent=ventState.peep+' cmH₂O';
+}
+
+// ── Procedures ────────────────────────────────────────────────────────────
+function toggleCPR(){
+  cprActive=!cprActive;
+  var btn=document.getElementById('cpr-btn');
+  btn.classList.toggle('active',cprActive);
+  var label=cprActive?'CPR STARTED':'CPR STOPPED';
+  if(!send({type:'participantAction',action:'cpr',active:cprActive,actionLabel:label}))return;
+  logAction(label,'ok');
+  toast(label);
+}
+
+function doDefib(){
+  if(!send({type:'intervention',drug:'defibrillation',dose:200,actionLabel:'Defibrillation 200J'}))return;
+  logAction('Defibrillation 200J','ok');
+  toast('DEFIB 200J delivered');
+}
+
+function doCardioversion(){
+  if(!send({type:'intervention',drug:'cardioversion',dose:100,actionLabel:'Cardioversion 100J'}))return;
+  logAction('Cardioversion 100J','ok');
+  toast('Cardioversion delivered');
+}
+
+// ── Log ───────────────────────────────────────────────────────────────────
+function logAction(text,cls){
+  var now=new Date();
+  var t=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0')+':'+now.getSeconds().toString().padStart(2,'0');
+  logEntries.unshift({t:t,text:text,cls:cls||''});
+  if(logEntries.length>30)logEntries.pop();
+  var inner=document.getElementById('log-inner');
+  inner.innerHTML=logEntries.map(function(e){
+    return '<div class="log-entry '+(e.cls||'')+'">'+e.t+' '+e.text+'</div>';
+  }).join('');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+var toastTimer=null;
+function toast(msg){
+  var el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(function(){el.classList.remove('show');},2000);
+}
+
+function setMsg(t){document.getElementById('setup-msg').textContent=t;}
+
+// Allow Enter key to connect
+document.getElementById('setup-input').addEventListener('keydown',function(e){
+  if(e.key==='Enter')doConnect();
+});
+</script>
+</body>
+</html>
